@@ -246,7 +246,7 @@ impl App {
             }
             State::Input => {
                 let day = self.days.get(self.day_highlight.unwrap()).unwrap();
-                let input_size = day.instances.len();
+                let input_size = day.day.as_ref().map(|a| a.inputs().len()).unwrap_or(0);
                 if let Some(h) = self.input_highlight {
                     if h == 0 {
                         self.input_highlight = Some(input_size - 1)
@@ -288,7 +288,7 @@ impl App {
             }
             State::Input => {
                 let day = self.days.get(self.day_highlight.unwrap()).unwrap();
-                let input_size = day.instances.len();
+                let input_size = day.day.as_ref().map(|a| a.inputs().len()).unwrap_or(0);
                 if let Some(h) = self.input_highlight {
                     if h == input_size - 1 {
                         self.input_highlight = Some(0)

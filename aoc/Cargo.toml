@@ -16,5 +16,8 @@ tracing-subscriber = {version = "0.3.2", features = ["env-filter"]}
 
 [dependencies.tui]
 default-features = false
-features = ["crossterm"]
+features = ["crossterm", "termion"]
 version = "0.16.0"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+termion = "1.5.6"
