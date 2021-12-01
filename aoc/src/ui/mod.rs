@@ -38,6 +38,7 @@ pub fn run() -> eyre::Result<()> {
                     KeyCode::Char(c) => app.handle_key(c),
                     KeyCode::Up => app.on_up(),
                     KeyCode::Down => app.on_down(),
+                    KeyCode::Enter => app.on_enter(),
                     _ => {}
                 }
             }

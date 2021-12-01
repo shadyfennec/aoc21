@@ -23,20 +23,31 @@ pub fn days() -> Vec<Day> {
 
 pub trait AocDay {
     fn title(&self) -> String;
-    fn description(&self) -> String;
     fn inputs(&self) -> &[&'static str];
-    fn run(
+    fn part_1(
         &self,
         input: Vec<String>,
         output: Sender<String>,
         debug: Sender<String>,
     ) -> eyre::Result<()>;
 
+    fn part_2(
+        &self,
+        input: Vec<String>,
+        output: Sender<String>,
+        debug: Sender<String>,
+    ) -> eyre::Result<()>;
+
+    fn println(&self, s: String, channel: &Sender<String>) {
+        channel.send(format!("{}\n", s)).unwrap();
+    }
+
     fn run_timed(
         &self,
         input: String,
         output: Sender<String>,
         debug: Sender<String>,
+        part: usize,
     ) -> eyre::Result<Duration> {
         let input = BufReader::new(OpenOptions::new().read(true).write(false).open(input)?)
             .lines()
@@ -45,7 +56,13 @@ pub trait AocDay {
 
         let start = Instant::now();
 
-        self.run(input, output, debug)?;
+        if part == 1 {
+            self.part_1(input, output, debug)?;
+        } else if part == 2 {
+            self.part_2(input, output, debug)?;
+        } else {
+            panic!("Invalid part")
+        }
 
         Ok(start.elapsed())
     }

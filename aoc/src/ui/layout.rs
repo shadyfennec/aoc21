@@ -2,7 +2,7 @@ use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
-use crate::ui::app::App;
+use crate::ui::app::{App, State};
 
 use tui::backend::Backend;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
@@ -32,7 +32,7 @@ where
 
     let header = Row::new(header_cells).height(1).bottom_margin(1);
 
-    let rows = app.days.iter().map(|d| {
+    let rows = app.days.iter().flat_map(|d| {
         let number = Cell::from(format!("{}", d.number));
         let title = Cell::from(
             d.day
@@ -47,7 +47,7 @@ where
             Cell::from(String::new())
         };
 
-        Row::new([number, title, status])
+        let row = Row::new([number, title, status])
             .bottom_margin(0)
             .style(if d.day.is_some() {
                 Style::default()
@@ -55,7 +55,38 @@ where
                 Style::default()
                     .fg(Color::DarkGray)
                     .add_modifier(Modifier::ITALIC)
-            })
+            });
+
+        if app.part_highlight.is_some() {
+            if d.number == app.day_highlight.unwrap() + 1 {
+                let status =
+                    Cell::from(format!("{}", d.status_for_part(1))).style(d.status().style());
+
+                let part_1 = Row::new([
+                    Cell::from(String::new()),
+                    Cell::from(String::from("Part 1")),
+                    status,
+                ])
+                .bottom_margin(0)
+                .style(Style::default().add_modifier(Modifier::ITALIC));
+
+                let status =
+                    Cell::from(format!("{}", d.status_for_part(2))).style(d.status().style());
+
+                let part_2 = Row::new([
+                    Cell::from(String::new()),
+                    Cell::from(String::from("Part 2")),
+                    status,
+                ])
+                .bottom_margin(0)
+                .style(Style::default().add_modifier(Modifier::ITALIC));
+                vec![row, part_1, part_2]
+            } else {
+                vec![row]
+            }
+        } else {
+            vec![row]
+        }
     });
 
     let table = Table::new(rows)
@@ -70,8 +101,14 @@ where
         ]);
 
     let mut state = TableState::default();
-    state.select(app.day_highlight);
-
+    if let State::Day = app.state {
+        state.select(app.day_highlight);
+    } else {
+        state.select(
+            app.day_highlight
+                .map(|i| i + app.part_highlight.unwrap() + 1),
+        )
+    }
     f.render_stateful_widget(table, rect, &mut state);
 }
 
@@ -86,25 +123,31 @@ where
     let header = Row::new(header_cells).height(1).bottom_margin(1);
 
     let rows = if let Some(n) = app.day_highlight {
-        let day = app.days.get(n).unwrap();
+        if let Some(part) = app.part_highlight {
+            let day = app.days.get(n).unwrap();
+            let part = part + 1;
 
-        if day.day.is_some() {
-            day.instances
-                .iter()
-                .map(|r| {
-                    let i = Path::new(r.input)
-                        .file_name()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("")
-                        .to_string();
+            if day.day.is_some() {
+                day.instances
+                    .iter()
+                    .filter(|i| i.part == part)
+                    .map(|r| {
+                        let i = Path::new(r.input)
+                            .file_name()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or("")
+                            .to_string();
 
-                    let t = r.duration().unwrap_or_else(String::new);
+                        let t = r.duration().unwrap_or_else(String::new);
 
-                    let s = Cell::from(format!("{}", r.status)).style(r.status.style());
+                        let s = Cell::from(format!("{}", r.status)).style(r.status.style());
 
-                    Row::new([Cell::from(i), Cell::from(t), s]).bottom_margin(0)
-                })
-                .collect()
+                        Row::new([Cell::from(i), Cell::from(t), s]).bottom_margin(0)
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            }
         } else {
             Vec::new()
         }
@@ -114,7 +157,7 @@ where
 
     let table = Table::new(rows)
         .header(header)
-        .block(Block::default().borders(Borders::ALL).title("AoC 2021"))
+        .block(Block::default().borders(Borders::ALL).title("Input files"))
         .highlight_style(Style::default().bg(Color::DarkGray))
         .highlight_symbol("> ")
         .widths(&[
@@ -135,7 +178,14 @@ where
 {
     let text = if let Some(i) = app.input_highlight {
         let day = app.days.get(app.day_highlight.unwrap()).unwrap();
-        let path = day.instances.get(i).unwrap().input;
+        let part = app.part_highlight.unwrap() + 1;
+        let path = day
+            .instances
+            .iter()
+            .filter(|i| i.part == part)
+            .nth(i)
+            .unwrap()
+            .input;
 
         OpenOptions::new()
             .read(true)
@@ -165,6 +215,50 @@ where
     // .wrap(Wrap { trim: true });
 
     f.render_widget(paragraph, rect)
+}
+
+pub fn draw_outputs<B>(f: &mut Frame<B>, output_rect: Rect, debug_rect: Rect, app: &mut App)
+where
+    B: Backend,
+{
+    let (output, debug) = if let Some(i) = app.day_highlight {
+        let d = app.days.get(i).unwrap();
+        if let Some(part) = app.part_highlight {
+            let part = part + 1;
+            if let Some(i) = app.input_highlight {
+                let i = d
+                    .instances
+                    .iter()
+                    .filter(|i| i.part == part)
+                    .nth(i)
+                    .unwrap();
+
+                (
+                    i.output.split_terminator('\n').map(Spans::from).collect(),
+                    i.debug.split_terminator('\n').map(Spans::from).collect(),
+                )
+            } else {
+                (Vec::new(), Vec::new())
+            }
+        } else {
+            (Vec::new(), Vec::new())
+        }
+    } else {
+        (Vec::new(), Vec::new())
+    };
+
+    let output = Paragraph::new(output)
+        .style(Style::default())
+        .block(Block::default().title("Output").borders(Borders::ALL))
+        .alignment(Alignment::Left);
+
+    let debug = Paragraph::new(debug)
+        .style(Style::default())
+        .block(Block::default().title("Debug").borders(Borders::ALL))
+        .alignment(Alignment::Left);
+
+    f.render_widget(output, output_rect);
+    f.render_widget(debug, debug_rect);
 }
 
 pub fn draw<B>(f: &mut Frame<B>, app: &mut App)
@@ -197,10 +291,16 @@ where
     let input_chunk = chunks[0];
     let description_chunk = chunks[1];
 
-    let output = Block::default().borders(Borders::all()).title("Output");
+    let chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
+        .split(output_chunk);
+
+    let output_chunk = chunks[0];
+    let debug_chunk = chunks[1];
 
     draw_list(f, days_chunk, app);
     draw_inputs(f, input_chunk, app);
-    f.render_widget(output, output_chunk);
+    draw_outputs(f, output_chunk, debug_chunk, app);
     draw_input_preview(f, description_chunk, app)
 }

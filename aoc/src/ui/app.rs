@@ -8,9 +8,10 @@ use tui::style::{Color, Modifier, Style};
 use crate::ui::ThreadPool;
 use crate::AocDay;
 
-enum State {
-    SelectingDay,
-    SelectingInput,
+pub enum State {
+    Day,
+    Part,
+    Input,
 }
 
 type ArcDay = Arc<Box<dyn AocDay + Sync + Send>>;
@@ -64,16 +65,44 @@ impl OutputCommunication {
     pub fn senders(&self) -> (Sender<String>, Sender<String>) {
         (self.output.0.clone(), self.debug.0.clone())
     }
+
+    pub fn output(&self) -> Option<String> {
+        self.output.1.try_recv().ok()
+    }
+
+    pub fn debug(&self) -> Option<String> {
+        self.debug.1.try_recv().ok()
+    }
 }
 
 pub struct Instance {
     pub(crate) input: &'static str,
+    pub(crate) part: usize,
     pub(crate) job_id: Option<usize>,
     pub(crate) status: JobStatus,
     pub(crate) communication: OutputCommunication,
+    pub(crate) output: String,
+    pub(crate) debug: String,
 }
 
 impl Instance {
+    pub fn new(input: &'static str, part: usize) -> Self {
+        Instance {
+            input,
+            part,
+            job_id: None,
+            status: JobStatus::Ready,
+            communication: OutputCommunication::new(),
+            output: String::new(),
+            debug: String::new(),
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.output.clear();
+        self.debug.clear();
+    }
+
     pub fn duration(&self) -> Option<String> {
         if let JobStatus::Finished(d) = &self.status {
             Some(format!(
@@ -85,6 +114,13 @@ impl Instance {
         } else {
             None
         }
+    }
+
+    pub fn update(&mut self) {
+        self.output
+            .push_str(&self.communication.output().unwrap_or_else(String::new));
+        self.debug
+            .push_str(&self.communication.debug().unwrap_or_else(String::new));
     }
 }
 
@@ -101,12 +137,7 @@ impl From<crate::Day> for Day {
         let instances = if let Some(b) = &b {
             b.inputs()
                 .iter()
-                .map(|i| Instance {
-                    input: i,
-                    job_id: None,
-                    status: JobStatus::Ready,
-                    communication: OutputCommunication::new(),
-                })
+                .flat_map(|i| vec![Instance::new(i, 1), Instance::new(i, 2)])
                 .collect()
         } else {
             Vec::new()
@@ -124,14 +155,24 @@ impl Day {
     pub fn status(&self) -> JobStatus {
         self.instances.iter().map(|i| i.status).max().unwrap()
     }
+
+    pub fn status_for_part(&self, part: usize) -> JobStatus {
+        self.instances
+            .iter()
+            .filter(|i| i.part == part)
+            .map(|i| i.status)
+            .max()
+            .unwrap()
+    }
 }
 
 pub struct App {
     pub(crate) days: Vec<Day>,
     pub(crate) day_highlight: Option<usize>,
+    pub(crate) part_highlight: Option<usize>,
     pub(crate) input_highlight: Option<usize>,
     pool: ThreadPool<4>,
-    state: State,
+    pub(crate) state: State,
     should_quit: bool,
 }
 
@@ -140,9 +181,10 @@ impl App {
         Self {
             days: crate::days().into_iter().map(Into::into).collect(),
             day_highlight: Some(0),
+            part_highlight: None,
             input_highlight: None,
             pool: ThreadPool::new(),
-            state: State::SelectingDay,
+            state: State::Day,
             should_quit: false,
         }
     }
@@ -152,26 +194,37 @@ impl App {
     }
 
     fn day_selection(&mut self) {
-        self.state = State::SelectingDay;
-        self.input_highlight = None;
+        self.state = State::Day;
+        self.part_highlight = None;
     }
 
     fn input_selection(&mut self) {
         if let Some(n) = self.day_highlight {
             if self.days.get(n).unwrap().day.is_some() {
-                self.state = State::SelectingInput;
+                self.state = State::Input;
                 self.input_highlight = Some(0);
+            }
+        }
+    }
+
+    fn part_selection(&mut self) {
+        if let Some(n) = self.day_highlight {
+            if self.days.get(n).unwrap().day.is_some() {
+                self.state = State::Part;
+                self.part_highlight = Some(0);
+                self.input_highlight = None;
             }
         }
     }
 
     pub fn handle_key(&mut self, letter: char) {
         match letter {
-            'q' | 'Q' => match self.state {
-                State::SelectingDay => self.should_quit = true,
-                State::SelectingInput => self.day_selection(),
+            'q' => match self.state {
+                State::Day => self.should_quit = true,
+                State::Part => self.day_selection(),
+                State::Input => self.part_selection(),
             },
-            'r' => self.input_selection(),
+            'Q' => self.should_quit = true,
             'R' => self.run_all(),
             _ => {}
         }
@@ -179,7 +232,7 @@ impl App {
 
     pub fn on_up(&mut self) {
         match self.state {
-            State::SelectingDay => {
+            State::Day => {
                 if let Some(h) = self.day_highlight {
                     if h == 0 {
                         self.day_highlight = Some(24)
@@ -191,7 +244,7 @@ impl App {
                 }
                 self.input_highlight = None;
             }
-            State::SelectingInput => {
+            State::Input => {
                 let day = self.days.get(self.day_highlight.unwrap()).unwrap();
                 let input_size = day.instances.len();
                 if let Some(h) = self.input_highlight {
@@ -204,12 +257,24 @@ impl App {
                     self.input_highlight = Some(0)
                 }
             }
+            State::Part => {
+                if let Some(h) = self.part_highlight {
+                    if h == 0 {
+                        self.part_highlight = Some(1);
+                    } else {
+                        self.part_highlight = Some(0);
+                    }
+                } else {
+                    self.part_highlight = Some(0)
+                }
+                self.input_highlight = None;
+            }
         }
     }
 
     pub fn on_down(&mut self) {
         match self.state {
-            State::SelectingDay => {
+            State::Day => {
                 if let Some(h) = self.day_highlight {
                     if h == 24 {
                         self.day_highlight = Some(0)
@@ -221,7 +286,7 @@ impl App {
                 }
                 self.input_highlight = None;
             }
-            State::SelectingInput => {
+            State::Input => {
                 let day = self.days.get(self.day_highlight.unwrap()).unwrap();
                 let input_size = day.instances.len();
                 if let Some(h) = self.input_highlight {
@@ -234,6 +299,18 @@ impl App {
                     self.input_highlight = Some(0)
                 }
             }
+            State::Part => {
+                if let Some(h) = self.part_highlight {
+                    if h == 0 {
+                        self.part_highlight = Some(1);
+                    } else {
+                        self.part_highlight = Some(0);
+                    }
+                } else {
+                    self.part_highlight = Some(0)
+                }
+                self.input_highlight = None;
+            }
         }
     }
 
@@ -242,6 +319,7 @@ impl App {
 
         self.days.iter_mut().for_each(|day| {
             day.instances.iter_mut().for_each(|i| {
+                i.update();
                 if let Some(id) = i.job_id {
                     if let Some((_, worker_id)) =
                         report.started_jobs.iter().find(|started| started.0 == id)
@@ -267,7 +345,14 @@ impl App {
             let day = self.days.get_mut(i).unwrap();
 
             if let Some(i) = self.input_highlight {
-                let instance = day.instances.get_mut(i).unwrap();
+                let part = self.part_highlight.unwrap() + 1;
+                let instance = day
+                    .instances
+                    .iter_mut()
+                    .filter(|i| i.part == part)
+                    .nth(i)
+                    .unwrap();
+                instance.clear();
                 let day = day.day.as_ref().unwrap().clone();
 
                 let (output, debug) = instance.communication.senders();
@@ -275,7 +360,7 @@ impl App {
 
                 let (job_id, worker_id) = self
                     .pool
-                    .register(move || day.run_timed(input, output, debug));
+                    .register(move || day.run_timed(input, output, debug, part));
 
                 instance.job_id = Some(job_id);
                 instance.status = worker_id
@@ -291,12 +376,14 @@ impl App {
                 d.instances.iter_mut().for_each(|i| {
                     let (output, debug) = i.communication.senders();
                     let input = i.input.to_string();
+                    let part = i.part;
+                    i.clear();
 
                     let a = a.clone();
 
                     let (job_id, worker_id) = self
                         .pool
-                        .register(move || a.run_timed(input, output, debug));
+                        .register(move || a.run_timed(input, output, debug, part));
 
                     i.job_id = Some(job_id);
                     i.status = worker_id
@@ -305,6 +392,14 @@ impl App {
                 })
             }
         });
+    }
+
+    pub fn on_enter(&mut self) {
+        match self.state {
+            State::Day => self.part_selection(),
+            State::Part => self.input_selection(),
+            State::Input => self.run_input(),
+        }
     }
 }
 

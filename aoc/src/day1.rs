@@ -1,5 +1,7 @@
 use crate::AocDay;
 
+use itertools::Itertools;
+
 pub struct Day1;
 
 impl Default for Day1 {
@@ -10,33 +12,61 @@ impl Default for Day1 {
 
 impl AocDay for Day1 {
     fn title(&self) -> String {
-        "The first day of Santa".to_owned()
-    }
-
-    fn description(&self) -> String {
-        "a".to_owned()
+        "Sonar Sweep".to_owned()
     }
 
     fn inputs(&self) -> &[&'static str] {
         &["inputs/day1/small.txt", "inputs/day1/real.txt"]
     }
 
-    fn run(
+    fn part_1(
         &self,
         input: Vec<String>,
         output: std::sync::mpsc::Sender<String>,
-        debug: std::sync::mpsc::Sender<String>,
+        _debug: std::sync::mpsc::Sender<String>,
     ) -> color_eyre::eyre::Result<()> {
-        debug.send(String::from("debugging!!!!!!!!!!!"))?;
-
-        std::thread::sleep(std::time::Duration::from_millis(2000));
-
-        let _ = input
+        let result = input
             .into_iter()
-            .try_for_each(|_| Result::<(), color_eyre::Report>::Ok(()))?;
+            .filter_map(|s| s.parse::<usize>().ok())
+            .fold((None, 0), |(a, mut n), b| {
+                if let Some(depth) = a {
+                    if b > depth {
+                        n += 1;
+                    }
+                };
 
-        output.send(String::from("all good :)"))?;
+                (Some(b), n)
+            })
+            .1;
 
+        self.println(format!("{}", result), &output);
+
+        Ok(())
+    }
+
+    fn part_2(
+        &self,
+        input: Vec<String>,
+        output: std::sync::mpsc::Sender<String>,
+        _debug: std::sync::mpsc::Sender<String>,
+    ) -> color_eyre::eyre::Result<()> {
+        let result = input
+            .into_iter()
+            .filter_map(|s| s.parse::<usize>().ok())
+            .tuple_windows()
+            .map(|(a, b, c)| a + b + c)
+            .fold((None, 0), |(a, mut n), b| {
+                if let Some(depth) = a {
+                    if b > depth {
+                        n += 1;
+                    }
+                };
+
+                (Some(b), n)
+            })
+            .1;
+
+        self.println(format!("{}", result), &output);
         Ok(())
     }
 }
