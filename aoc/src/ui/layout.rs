@@ -97,7 +97,7 @@ where
         .widths(&[
             Constraint::Min(4),
             Constraint::Percentage(50),
-            Constraint::Min(14),
+            Constraint::Percentage(50),
         ]);
 
     let mut state = TableState::default();
