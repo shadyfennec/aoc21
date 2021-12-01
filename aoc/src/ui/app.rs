@@ -5,9 +5,10 @@ use std::time::Duration;
 
 use tui::style::{Color, Modifier, Style};
 
-use crate::ui::ThreadPool;
+use crate::ui::{ThreadPool, WidgetList};
 use crate::AocDay;
 
+#[derive(Debug, Clone, Copy)]
 pub enum State {
     Day,
     Part,
@@ -152,6 +153,10 @@ impl From<crate::Day> for Day {
 }
 
 impl Day {
+    pub fn is_present(&self) -> bool {
+        self.day.is_some()
+    }
+
     pub fn status(&self) -> JobStatus {
         self.instances.iter().map(|i| i.status).max().unwrap()
     }
@@ -171,6 +176,7 @@ pub struct App {
     pub(crate) day_highlight: Option<usize>,
     pub(crate) part_highlight: Option<usize>,
     pub(crate) input_highlight: Option<usize>,
+    widgets: WidgetList,
     pool: ThreadPool<4>,
     pub(crate) state: State,
     should_quit: bool,
@@ -183,6 +189,7 @@ impl App {
             day_highlight: Some(0),
             part_highlight: None,
             input_highlight: None,
+            widgets: WidgetList::new(),
             pool: ThreadPool::new(),
             state: State::Day,
             should_quit: false,
@@ -400,6 +407,26 @@ impl App {
             State::Part => self.input_selection(),
             State::Input => self.run_input(),
         }
+    }
+
+    pub fn is_day_present(&self, idx: usize) -> bool {
+        self.days.get(idx).unwrap().day.is_some()
+    }
+
+    pub fn selecting_day(&self) -> bool {
+        matches!(self.state, State::Day)
+    }
+
+    pub fn selecting_part(&self) -> bool {
+        matches!(self.state, State::Part)
+    }
+
+    pub fn selecting_input(&self) -> bool {
+        matches!(self.state, State::Input)
+    }
+
+    pub fn state(&self) -> State {
+        self.state
     }
 }
 

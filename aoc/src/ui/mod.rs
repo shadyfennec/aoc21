@@ -5,6 +5,9 @@ use tui::Terminal;
 mod app;
 use app::*;
 
+mod widget;
+use widget::*;
+
 mod layout;
 mod threadpool;
 use threadpool::*;
