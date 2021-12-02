@@ -13,7 +13,7 @@ use aoc_derive::days;
 
 pub mod ui;
 
-days!(1);
+days!(2);
 
 pub type Day = (usize, Option<Box<dyn AocDay + Send + Sync>>);
 
